@@ -4,7 +4,7 @@ import numpy as np
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
-from getdatabase import GetDatabase  # getdatabase.py dosyasını kontrol et!
+from getdatabase import GetDatabase 
 
 # GetDatabase sınıfını başlatırken gerekli parametreleri veriyoruz
 db = GetDatabase(
@@ -41,15 +41,20 @@ merged_df = pd.merge(merged_df, products_df, on="product_id", how="inner")
 
 
 merged_df['order_date'] = pd.to_datetime(
-    merged_df['order_date'])  # Tarih formatına çevir
+    merged_df['order_date'])  
 merged_df['Month'] = merged_df['order_date'].dt.to_period('M')
+
+
 monthly_sales = merged_df.groupby(['Month', 'product_id']).agg({"quantity": "sum"}).reset_index()
+monthly_sales['Month'] = monthly_sales['Month'].astype(str)
 print(monthly_sales.head())
 
 merged_df['TotalPrice'] = merged_df['quantity'] * merged_df['unit_price_y']
 customer_sales = merged_df.groupby("customer_id")["TotalPrice"].sum()
 customer_sales_segmented = pd.cut(customer_sales, bins=[0, 1000, 5000, 10000, np.inf], labels=["Low", "Medium", "High", "VIP"])
-customer_sales = customer_sales.assign(Segment=customer_sales_segmented)
-print(merged_df)
+customer_sales = customer_sales.to_frame(name="TotalPrice")
+customer_sales["Segment"] = customer_sales_segmented
+print(customer_sales)
 
-
+db.create_data(monthly_sales,"monthly_sales")
+db.create_data(customer_sales,"customer_sales")

@@ -1,6 +1,8 @@
 from sqlalchemy import create_engine
 import pandas as pd
 
+
+
 class GetDatabase:
     def __init__(self, username, password, host, port, database):
         self.username = username
@@ -32,3 +34,10 @@ class GetDatabase:
         print("Eksik veri kontrolü:")
         print(df.isnull().sum())
 
+    def create_data(self, df, table_name):
+        try:
+        
+           df.to_sql(table_name, self.engine, if_exists="replace", index=False)
+           print(f"{table_name} tablosu veritabanına başarıyla kaydedildi!")
+        except Exception as e:
+             print(f"Veri kaydetme hatası: {e}")
