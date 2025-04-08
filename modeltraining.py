@@ -14,7 +14,7 @@ import time
 from getdatabase import GetDatabase
 from productrecommender import ProductRecommender
 
-# Veritabanı bağlantısı
+
 
 db = GetDatabase(
     username="postgres",
@@ -24,7 +24,6 @@ db = GetDatabase(
     database="GYK2Northwind"
 )
 
-# Verilerin çekilmesi
 orders_df = db.fetch_data("orders")
 products_df = db.fetch_data("products")
 order_details_df = db.fetch_data("Order_Details")
@@ -33,7 +32,6 @@ monthly_sales_df = db.fetch_data("monthly_sales ")
 customer_sales_df = db.fetch_data("customer_sales ")
 categories_df = db.fetch_data("categories")
 
-# Multi-output destekli model değerlendirme fonksiyonu
 def train_and_evaluate_models(X, y, test_size=0.2, random_state=42):
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=test_size, random_state=random_state)
@@ -70,7 +68,6 @@ def train_and_evaluate_models(X, y, test_size=0.2, random_state=42):
 
     return pd.DataFrame(results)
 
-# Verilerin birleştirilmesi
 order_data = pd.merge(
     order_details_df,
     orders_df[["order_id", "customer_id", "order_date"]],
@@ -113,17 +110,14 @@ order_data["TotalPrice"] = order_data["unit_price"] * order_data["quantity"]
 order_data["Segment"] = order_data["Segment"].astype("category").cat.codes
 order_data["has_discount"] = (order_data["discount"] > 0).astype(int)
 
-# Outlier temizliği
 q_high = order_data["quantity"].quantile(0.99)
 order_data = order_data[order_data["quantity"] < q_high]
 
-# Müşteri alışkanlıkları
 order_count = orders_df.groupby("customer_id").size().reset_index(name="order_count")
 avg_spending = order_data.groupby("customer_id")["TotalPrice"].mean().reset_index(name="avg_spending")
 order_data = pd.merge(order_data, order_count, on="customer_id", how="left")
 order_data = pd.merge(order_data, avg_spending, on="customer_id", how="left")
 
-# Geçmiş ay ürün satış miktarı (previous_quantity)
 monthly_product_sales = (
     order_data.groupby(["product_id", "Year", "Month"])["quantity"]
     .sum()
@@ -146,18 +140,15 @@ order_data = pd.merge(order_data, avg_price_product, on="product_id", how="left"
 
 
 
-# Özellikler ve hedef değişken
 X = order_data[[
     "product_id", "unit_price", "Month", "customer_id", "Segment",
     "has_discount", "order_count", "avg_spending", "previous_quantity", "category_id"
 ]]
 X["customer_id"] = X["customer_id"].astype("category").cat.codes
 
-# Çoklu çıktı hedef
 y = order_data[["TotalPrice", "quantity"]]
 db.create_data(X, "order_details_model_data")
 
-# Model eğitimi
 results = train_and_evaluate_models(X, y)
 print(results)
 
@@ -166,11 +157,10 @@ X_scaled = scaler.fit_transform(X)
 model = MultiOutputRegressor(RandomForestRegressor(n_estimators=100, random_state=42))
 model.fit(X_scaled, y)
 
-# Model ve scaler'ı kaydet
+
 joblib.dump(model, "rf_model.joblib")
 joblib.dump(scaler, "scaler.joblib")
 
-# modeltraining.py ya da öneri sistemini çağırdığın dosyada
 all_products_df = X.drop_duplicates(subset=["product_id"])[["product_id"]].copy()
 base_features_df = X.copy()
 

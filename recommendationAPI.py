@@ -90,11 +90,10 @@ class RecommendationAPI:
         "has_discount", "order_count", "avg_spending", "previous_quantity", "category_id"]]
         y = order_data[["TotalPrice", "quantity"]]
 
-    # 3. Kodlayıcılar (Segment, customer_id gibi) varsa dönüştür
         X["customer_id"] = X["customer_id"].astype("category").cat.codes
         X["Segment"] = X["Segment"].astype("category").cat.codes
 
-    # 4. Ölçekleme + model eğitimi
+   
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
         scaler = StandardScaler()
         X_train_scaled = scaler.fit_transform(X_train)
@@ -102,7 +101,7 @@ class RecommendationAPI:
         model = MultiOutputRegressor(RandomForestRegressor(n_estimators=100, random_state=42))
         model.fit(X_train_scaled, y_train)
 
-    # 5. Model ve scaler'ı kaydet
+    
         joblib.dump(model, "rf_model.joblib")
         joblib.dump(scaler, "scaler.joblib")
 
