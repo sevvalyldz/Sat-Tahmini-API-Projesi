@@ -1,119 +1,181 @@
+import joblib
 import pandas as pd
 import numpy as np
-from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 from sklearn.model_selection import train_test_split
-from getdatabase import GetDatabase
-import time
 from sklearn.preprocessing import StandardScaler
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.multioutput import MultiOutputRegressor
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.svm import SVR
+import time
+from getdatabase import GetDatabase
+from productrecommender import ProductRecommender
 
+# Veritabanı bağlantısı
 
 db = GetDatabase(
     username="postgres",
-    password="47164716",
+    password="password",
     host="localhost",
     port="5432",
-    database="GYKNorthwind"
+    database="GYK2Northwind"
 )
 
+# Verilerin çekilmesi
 orders_df = db.fetch_data("orders")
-print("Orders Tablosu:")
-print(orders_df.head())
-
 products_df = db.fetch_data("products")
-print("Products Tablosu:")
-print(products_df.head())
-
 order_details_df = db.fetch_data("Order_Details")
-print("Order Details Tablosu:")
-print(order_details_df.head())
-
 customers_df = db.fetch_data("Customers")
-print("Customers Tablosu:")
-print(customers_df.head())
-
 monthly_sales_df = db.fetch_data("monthly_sales ")
-print("Monthly Sales Tablosu:")
-print(monthly_sales_df.head())
-
 customer_sales_df = db.fetch_data("customer_sales ")
-print("Customer Sales Tablosu:")
-print(customer_sales_df.head())
+categories_df = db.fetch_data("categories")
 
-
+# Multi-output destekli model değerlendirme fonksiyonu
 def train_and_evaluate_models(X, y, test_size=0.2, random_state=42):
-    """
-    Verilen X (özellikler) ve y (etiketler) ile farklı sınıflandırma modellerini eğitir ve karşılaştırır.
-    """
-    # Veri setini eğitim ve test olarak ayır
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=test_size, random_state=random_state)
 
-    # Veriyi ölçeklendir (KNN ve SVM için önemli)
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_test = scaler.transform(X_test)
 
-    # Kullanılacak modeller
-    models = {
-        "KNN": KNeighborsClassifier(n_neighbors=5),
-        "Karar Ağacı": DecisionTreeClassifier(random_state=random_state),
-        "Random Forest": RandomForestClassifier(n_estimators=100, random_state=random_state),
-        "Lojistik Regresyon": LogisticRegression(max_iter=500),
-        "SVM": SVC(kernel='rbf')
+    base_models = {
+        "KNN": KNeighborsRegressor(),
+        "Karar Ağacı": DecisionTreeRegressor(random_state=random_state),
+        "Random Forest": RandomForestRegressor(n_estimators=100, random_state=random_state),
+        "Lineer Regresyon": LinearRegression(),
+        "SVR": SVR()
     }
 
-    # Sonuçları saklamak için liste
     results = []
 
-    # Modelleri eğit ve test et
-    for name, model in models.items():
+    for name, base_model in base_models.items():
+        model = MultiOutputRegressor(base_model)
         start_time = time.time()
         model.fit(X_train, y_train)
         y_pred = model.predict(X_test)
         end_time = time.time()
 
-        # Metrikleri hesapla
-        accuracy = accuracy_score(y_test, y_pred)
-        precision = precision_score(
-            y_test, y_pred, average='weighted', zero_division=0)
-        recall = recall_score(
-            y_test, y_pred, average='weighted', zero_division=0)
-        f1 = f1_score(y_test, y_pred, average='weighted', zero_division=0)
-        train_time = end_time - start_time
+        model_results = {"Model": name, "Training Time (s)": round(end_time - start_time, 4)}
 
-        # Sonuçları kaydet
-        results.append({
-            "Model": name,
-            "Accuracy": round(accuracy, 4),
-            "Precision": round(precision, 4),
-            "Recall": round(recall, 4),
-            "F1-Score": round(f1, 4),
-            "Training Time (s)": round(train_time, 4)
-        })
+        for i, col in enumerate(y.columns):
+            model_results[f"{col} MSE"] = round(mean_squared_error(y_test.iloc[:, i], y_pred[:, i]), 4)
+            model_results[f"{col} MAE"] = round(mean_absolute_error(y_test.iloc[:, i], y_pred[:, i]), 4)
+            model_results[f"{col} R2"] = round(r2_score(y_test.iloc[:, i], y_pred[:, i]), 4)
 
-    # Sonuçları DataFrame olarak döndür
-    return pd.DataFrame(results).sort_values(by="Accuracy", ascending=False)
+        results.append(model_results)
+
+    return pd.DataFrame(results)
+
+# Verilerin birleştirilmesi
+order_data = pd.merge(
+    order_details_df,
+    orders_df[["order_id", "customer_id", "order_date"]],
+    on="order_id",
+    how="left"
+)
+
+order_data["Month"] = pd.to_datetime(order_data["order_date"]).dt.month
+order_data["Year"] = pd.to_datetime(order_data["order_date"]).dt.year
+
+order_data = pd.merge(
+    order_data,
+    customer_sales_df,
+    on="customer_id",
+    how="left"
+)
+
+order_data = pd.merge(
+    order_data,
+    products_df[["product_id", "product_name", "category_id"]],
+    on="product_id",
+    how="left"
+)
+
+order_data = pd.merge(
+    order_data,
+    categories_df[["category_id"]],
+    on="category_id",
+    how="left"
+)
+
+order_data = pd.merge(
+    order_data,
+    customers_df[["customer_id"]],
+    on="customer_id",
+    how="left"
+)
+
+order_data["TotalPrice"] = order_data["unit_price"] * order_data["quantity"]
+order_data["Segment"] = order_data["Segment"].astype("category").cat.codes
+order_data["has_discount"] = (order_data["discount"] > 0).astype(int)
+
+# Outlier temizliği
+q_high = order_data["quantity"].quantile(0.99)
+order_data = order_data[order_data["quantity"] < q_high]
+
+# Müşteri alışkanlıkları
+order_count = orders_df.groupby("customer_id").size().reset_index(name="order_count")
+avg_spending = order_data.groupby("customer_id")["TotalPrice"].mean().reset_index(name="avg_spending")
+order_data = pd.merge(order_data, order_count, on="customer_id", how="left")
+order_data = pd.merge(order_data, avg_spending, on="customer_id", how="left")
+
+# Geçmiş ay ürün satış miktarı (previous_quantity)
+monthly_product_sales = (
+    order_data.groupby(["product_id", "Year", "Month"])["quantity"]
+    .sum()
+    .reset_index()
+    .sort_values(by=["product_id", "Year", "Month"])
+)
+monthly_product_sales["previous_quantity"] = monthly_product_sales.groupby("product_id")["quantity"].shift(1)
+
+order_data = pd.merge(
+    order_data,
+    monthly_product_sales[["product_id", "Year", "Month", "previous_quantity"]],
+    on=["product_id", "Year", "Month"],
+    how="left"
+)
+
+order_data["previous_quantity"] = order_data["previous_quantity"].fillna(0)
+order_data["category_id"] = order_data["category_id"].astype("category").cat.codes
+avg_price_product = order_data.groupby("product_id")["unit_price"].mean().reset_index(name="product_avg_price")
+order_data = pd.merge(order_data, avg_price_product, on="product_id", how="left")
 
 
 
-# Eğer sütun adları uyumsuzsa, doğru isimlerle düzenleme yapılabilir
-customer_sales_df.rename(columns={'different_column_name': 'customer_id'}, inplace=True)
+# Özellikler ve hedef değişken
+X = order_data[[
+    "product_id", "unit_price", "Month", "customer_id", "Segment",
+    "has_discount", "order_count", "avg_spending", "previous_quantity", "category_id"
+]]
+X["customer_id"] = X["customer_id"].astype("category").cat.codes
 
-# Veri çerçevelerini birleştirme
-merged_df = pd.merge(monthly_sales_df, customer_sales_df, on="customer_id", how="left")
-merged_df = pd.merge(merged_df, customers_df, on="customer_id", how="left")
-merged_df = pd.merge(merged_df, order_details_df, on="order_id", how="left")
+# Çoklu çıktı hedef
+y = order_data[["TotalPrice", "quantity"]]
+db.create_data(X, "order_details_model_data")
 
-# Özellikler
-X = merged_df[["product_id", "unit_price", "Month", "customer_id", "Segment"]]
-# Hedef değişkenler
-y = merged_df[["TotalPrice", "quantity"]]
-
-# Modelleri eğit ve sonuçları al
+# Model eğitimi
 results = train_and_evaluate_models(X, y)
 print(results)
+
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+model = MultiOutputRegressor(RandomForestRegressor(n_estimators=100, random_state=42))
+model.fit(X_scaled, y)
+
+# Model ve scaler'ı kaydet
+joblib.dump(model, "rf_model.joblib")
+joblib.dump(scaler, "scaler.joblib")
+
+# modeltraining.py ya da öneri sistemini çağırdığın dosyada
+all_products_df = X.drop_duplicates(subset=["product_id"])[["product_id"]].copy()
+base_features_df = X.copy()
+
+recommender = ProductRecommender()
+recommendations=recommender.recommend(customer_id=5, all_products_df=all_products_df, base_features_df=base_features_df)
+recommendations = recommendations.merge(products_df[["product_id", "product_name"]], on="product_id", how="left")
+recommendations["score"] = recommendations["predicted_quantity"] / recommendations["predicted_quantity"].max()
+print(recommendations)

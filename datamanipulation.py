@@ -9,10 +9,10 @@ from getdatabase import GetDatabase
 # GetDatabase sınıfını başlatırken gerekli parametreleri veriyoruz
 db = GetDatabase(
     username="postgres",
-    password="47164716",
+    password="password",
     host="localhost",
     port="5432",
-    database="GYKNorthwind"
+    database="GYK2Northwind"
 )
 
 # Veri çekme işlemi
@@ -54,6 +54,7 @@ customer_sales = merged_df.groupby("customer_id")["TotalPrice"].sum()
 customer_sales_segmented = pd.cut(customer_sales, bins=[0, 1000, 5000, 10000, np.inf], labels=["Low", "Medium", "High", "VIP"])
 customer_sales = customer_sales.to_frame(name="TotalPrice")
 customer_sales["Segment"] = customer_sales_segmented
+customer_sales = customer_sales.reset_index()
 print(customer_sales)
 
 db.create_data(monthly_sales,"monthly_sales")
